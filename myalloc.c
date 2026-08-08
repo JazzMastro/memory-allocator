@@ -2,11 +2,13 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 typedef struct Block {
     size_t size;
-    int free;
+    bool free;
     struct Block * next;
+    struct Block * prev;
 } Block;
 
 
@@ -32,12 +34,28 @@ int init(int size, void **start) {
 
     //initialize
     first->size = size - sizeof(Block);
-    first->free = 1;
+    first->free = true;
     first->next = NULL;
+    first->prev = NULL;
 
     heap_start = first; //heap_start stores address of first block
 
     return 0;
+}
+
+void split(Block * current, int size) {
+    int leftover = current->size - (size + sizeof(Block));
+
+    Block * NewBlock = (Block*)((char*)current + sizeof(Block) + size); //char cast to get correct address displacement for next block
+
+    NewBlock->size = leftover;
+    NewBlock->free = true;
+    NewBlock->next = current->next;
+    NewBlock->prev = current->prev;
+
+    current->size = size + sizeof(Block);
+    current->free = false;
+
 }
 
 void *myalloc(int x) {
@@ -59,5 +77,22 @@ void *myalloc(int x) {
     
     void * header = first; //points to first block (the actual block not the first pointer)
 
+    //find block with space
+    Block * traverse = first;
+    while (traverse->next != NULL) {
+        if (traverse->size < (x + sizeof(Block))) { //if size available is left then size we want
+            traverse = traverse->next;
+        } else {
+            break; //when we find block with enough space
+        }
+    }
+
+    if (traverse->next == NULL && traverse->size < (x + sizeof(Block))) { // no available blocks work
+        //make new block
+    }
+
+    //next step is to section some space out for our dedicated block
+    //remember that each call = one block so if we take space from one block we split it into two
     
+    split(traverse, x);
 }
