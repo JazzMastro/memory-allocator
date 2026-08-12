@@ -43,18 +43,25 @@ int init(int size, void **start) {
     return 0;
 }
 
-void split(Block * current, int size) {
+void split(Block * current, void ** header, int size) {
+
     int leftover = current->size - (size + sizeof(Block));
 
     Block * NewBlock = (Block*)((char*)current + sizeof(Block) + size); //char cast to get correct address displacement for next block
+
+    if (current == *header) { //if our current block is the first block in the list
+        *header = NewBlock;
+    }
 
     NewBlock->size = leftover;
     NewBlock->free = true;
     NewBlock->next = current->next;
     NewBlock->prev = current->prev;
 
-    current->size = size + sizeof(Block);
+    current->size = size;
     current->free = false;
+    current->next->prev = NewBlock;
+    current->prev->next = NewBlock;
 
 }
 
@@ -75,7 +82,7 @@ void *myalloc(int x) {
         if (res == 1) exit(0);
     }
     
-    void * header = first; //points to first block (the actual block not the first pointer)
+    void * header = first; //points to first block (the actual block not the 'first' pointer)
 
     //find block with space
     Block * traverse = first;
@@ -90,9 +97,15 @@ void *myalloc(int x) {
     if (traverse->next == NULL && traverse->size < (x + sizeof(Block))) { // no available blocks work
         //make new block
     }
-
-    //next step is to section some space out for our dedicated block
-    //remember that each call = one block so if we take space from one block we split it into two
     
-    split(traverse, x);
+    //split current block into return block of requested size and block with leftoversize
+    split(traverse, &header, x);
+
+    //same logic as before
+    //we return the adress that is the size of metadata past traverse's starting address
+    return (char*)traverse + sizeof(Block);
+}
+
+void myfree(void * address) {
+    //free function
 }
