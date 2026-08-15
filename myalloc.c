@@ -3,19 +3,12 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdbool.h>
-
-typedef struct Block {
-    size_t size;
-    bool free;
-    struct Block * next;
-    struct Block * prev;
-} Block;
+#include "shared.h"
 
 
 void * heap_start = NULL;
+void * header = NULL;
 Block * first = NULL;
-
-
 
 int init(int size, void **start) {
 
@@ -65,11 +58,25 @@ void split(Block * current, void ** header, int size) {
 
 }
 
+void moreSpace(int size, Block * traverse, Block * newMem) {
+
+    void **memStart;
+    *memStart = mmap (NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+    newMem = (Block *)*memStart;
+
+    //initialize new block
+
+    newMem->size = size - sizeof(Block);
+    newMem->free = false;
+    newMem->next = NULL;
+    newMem->prev = traverse;
+    newMem->prev->next = newMem;
+
+
+}
+
 void *myalloc(int x) {
-    //in a free list allocator, we use "blocks"
-    //how we implement this, is we take a pointer that points to the first adress in a block
-    //now lets say we have a block size of 8 addresses, so all 7 mem adds after the first pointer belong to the block
-    //conceptually we can say that each of these points to a new block: 0x1000, 0x1008, 0x1010, 0x1018, etc.
 
     //starting pointer and size (bytes)
 
@@ -82,7 +89,7 @@ void *myalloc(int x) {
         if (res == 1) exit(0);
     }
     
-    void * header = first; //points to first block (the actual block not the 'first' pointer)
+    header = first; //points to first block (the actual block not the 'first' pointer)
 
     //find block with space
     Block * traverse = first;
@@ -95,7 +102,9 @@ void *myalloc(int x) {
     }
 
     if (traverse->next == NULL && traverse->size < (x + sizeof(Block))) { // no available blocks work
-        //make new block
+        Block * newMem = NULL;
+        size_t size = 4096;
+        moreSpace(size, &traverse, &newMem);
     }
     
     //split current block into return block of requested size and block with leftoversize
@@ -104,8 +113,4 @@ void *myalloc(int x) {
     //same logic as before
     //we return the adress that is the size of metadata past traverse's starting address
     return (char*)traverse + sizeof(Block);
-}
-
-void myfree(void * address) {
-    //free function
 }
