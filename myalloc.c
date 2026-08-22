@@ -5,9 +5,10 @@
 #include <stdbool.h>
 #include "shared.h"
 
+#define MIN_BLOCK_SIZE sizeof(Block)
+
 
 void * heap_start = NULL;
-void * header = NULL;
 Block * first = NULL;
 
 int init(int size, void **start) {
@@ -36,43 +37,64 @@ int init(int size, void **start) {
     return 0;
 }
 
-void split(Block * current, void ** header, int size) {
+void split(Block * current, Block ** first, int size) {
 
     int leftover = current->size - (size + sizeof(Block));
 
+    // not enough room left over to make a usable free block —
+    // give the whole current block to the caller instead of splitting
+    if (leftover < (int)MIN_BLOCK_SIZE) {
+        if (current == *first) {
+            *first = current->next;
+        }
+        if (current->prev != NULL) current->prev->next = current->next;
+        if (current->next != NULL) current->next->prev = current->prev;
+        current->free = false;
+        return;
+    }
+
     Block * NewBlock = (Block*)((char*)current + sizeof(Block) + size); //char cast to get correct address displacement for next block
 
-    if (current == *header) { //if our current block is the first block in the list
-        *header = NewBlock;
+    if (current == *first) { //if our current block is the first block in the list
+        *first = NewBlock;
     }
 
     NewBlock->size = leftover;
     NewBlock->free = true;
+    
+
     NewBlock->next = current->next;
     NewBlock->prev = current->prev;
-
+    if (current->next != NULL) current->next->prev = NewBlock;
+    if (current->prev != NULL) current->prev->next = NewBlock;
     current->size = size;
     current->free = false;
-    current->next->prev = NewBlock;
-    current->prev->next = NewBlock;
 
 }
 
-void moreSpace(int size, Block * traverse, Block * newMem) {
+void moreSpace(int x, int size, Block ** traverse, Block ** newMem) {
 
-    void **memStart;
-    *memStart = mmap (NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (x + (int)sizeof(Block) > size) size = x + sizeof(Block);
 
-    newMem = (Block *)*memStart;
+    void *memStart = mmap (NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+    if (memStart == MAP_FAILED) {
+        perror("mmap failed");
+        *newMem = NULL;
+        return;
+    }
+
+    *newMem = (Block *)memStart;
 
     //initialize new block
 
-    newMem->size = size - sizeof(Block);
-    newMem->free = false;
-    newMem->next = NULL;
-    newMem->prev = traverse;
-    newMem->prev->next = newMem;
+    (*newMem)->size = size - sizeof(Block);
+    (*newMem)->free = true;
+    (*newMem)->next = NULL;
+    (*newMem)->prev = *traverse;
+    (*newMem)->prev->next = *newMem;
 
+    *traverse = *newMem;
 
 }
 
@@ -89,8 +111,7 @@ void *myalloc(int x) {
         if (res == 1) exit(0);
     }
     
-    header = first; //points to first block (the actual block not the 'first' pointer)
-
+   
     //find block with space
     Block * traverse = first;
     while (traverse->next != NULL) {
@@ -104,11 +125,14 @@ void *myalloc(int x) {
     if (traverse->next == NULL && traverse->size < (x + sizeof(Block))) { // no available blocks work
         Block * newMem = NULL;
         size_t size = 4096;
-        moreSpace(size, &traverse, &newMem);
+        moreSpace(x, size, &traverse, &newMem);
+        if (traverse == NULL) {
+            return NULL; // out of memory
+        }
     }
     
     //split current block into return block of requested size and block with leftoversize
-    split(traverse, &header, x);
+    split(traverse, &first, x);
 
     //same logic as before
     //we return the adress that is the size of metadata past traverse's starting address

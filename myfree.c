@@ -3,7 +3,16 @@
 void myfree(void * address) {
     Block * used = (Block *)((char*)address - sizeof(Block)); //we create a bock for the memory that is being freed
 
+    if (first == NULL) {
+        first = used;
+        used->next = NULL;
+        used->prev = NULL;
+        return;
+    }
+
     used->free = true;
+    used->next = NULL;
+    used->prev = NULL;
 
     if (used < first) {
         used->next = first;
