@@ -12,5 +12,9 @@ typedef struct Block {
 } Block;
 
 extern Block * first;
+extern void *heap_start;
+
+void *myalloc(int x);
+void myfree(void *address);
 
 #endif

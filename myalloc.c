@@ -101,6 +101,7 @@ void moreSpace(int x, int size, Block ** traverse, Block ** newMem) {
 void *myalloc(int x) {
 
     //starting pointer and size (bytes)
+    int aligned_size = (x + 7) & ~7; //rounds up to next multiple of 8
 
     if (heap_start == NULL) {
         void *start;
@@ -115,24 +116,24 @@ void *myalloc(int x) {
     //find block with space
     Block * traverse = first;
     while (traverse->next != NULL) {
-        if (traverse->size < (x + sizeof(Block))) { //if size available is left then size we want
+        if (traverse->size < (aligned_size + sizeof(Block))) { //if size available is left then size we want
             traverse = traverse->next;
         } else {
             break; //when we find block with enough space
         }
     }
 
-    if (traverse->next == NULL && traverse->size < (x + sizeof(Block))) { // no available blocks work
+    if (traverse->next == NULL && traverse->size < (aligned_size + sizeof(Block))) { // no available blocks work
         Block * newMem = NULL;
         size_t size = 4096;
-        moreSpace(x, size, &traverse, &newMem);
+        moreSpace(aligned_size, size, &traverse, &newMem);
         if (traverse == NULL) {
             return NULL; // out of memory
         }
     }
     
     //split current block into return block of requested size and block with leftoversize
-    split(traverse, &first, x);
+    split(traverse, &first, aligned_size);
 
     //same logic as before
     //we return the adress that is the size of metadata past traverse's starting address
