@@ -15,10 +15,8 @@ int init(int size, void **start) {
 
     *start = mmap (NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-    // ... use the memory here ...
-
     if (*start == MAP_FAILED) {
-        perror("munmap failed");
+        perror("mmap failed");
         return 1;
     }
 
@@ -39,29 +37,30 @@ int init(int size, void **start) {
 
 void split(Block * current, Block ** first, int size) {
 
-    int leftover = current->size - (size + sizeof(Block));
-
-    // not enough room left over to make a usable free block —
-    // give the whole current block to the caller instead of splitting
-    if (leftover < (int)MIN_BLOCK_SIZE) {
+    // not enough room left over to make a usable free block,
+    // so give the whole current block to the caller instead of splitting
+    if (current->size < size + sizeof(Block) + MIN_BLOCK_SIZE) {
         if (current == *first) {
             *first = current->next;
         }
         if (current->prev != NULL) current->prev->next = current->next;
         if (current->next != NULL) current->next->prev = current->prev;
+        current->next = NULL;   // optional: clears stale links
+        current->prev = NULL;   // optional: clears stale links
         current->free = false;
         return;
     }
 
-    Block * NewBlock = (Block*)((char*)current + sizeof(Block) + size); //char cast to get correct address displacement for next block
+    size_t leftover = current->size - size - sizeof(Block);
 
-    if (current == *first) { //if our current block is the first block in the list
+    Block * NewBlock = (Block*)((char*)current + sizeof(Block) + size);
+
+    if (current == *first) {
         *first = NewBlock;
     }
 
     NewBlock->size = leftover;
     NewBlock->free = true;
-    
 
     NewBlock->next = current->next;
     NewBlock->prev = current->prev;
@@ -69,7 +68,6 @@ void split(Block * current, Block ** first, int size) {
     if (current->prev != NULL) current->prev->next = NewBlock;
     current->size = size;
     current->free = false;
-
 }
 
 void moreSpace(int x, int size, Block ** traverse, Block ** newMem) {
@@ -91,8 +89,13 @@ void moreSpace(int x, int size, Block ** traverse, Block ** newMem) {
     (*newMem)->size = size - sizeof(Block);
     (*newMem)->free = true;
     (*newMem)->next = NULL;
+
     (*newMem)->prev = *traverse;
-    (*newMem)->prev->next = *newMem;
+    if (*traverse != NULL) {
+        (*traverse)->next = *newMem;
+    } else {
+        first = *newMem;
+    }
 
     *traverse = *newMem;
 
@@ -101,7 +104,8 @@ void moreSpace(int x, int size, Block ** traverse, Block ** newMem) {
 void *myalloc(int x) {
 
     //starting pointer and size (bytes)
-    int aligned_size = (x + 7) & ~7; //rounds up to next multiple of 8
+    if (x <= 0) return NULL;
+    int aligned_size = (x + 15) & ~15; //rounds up to next multiple of 16
 
     if (heap_start == NULL) {
         void *start;
@@ -109,25 +113,32 @@ void *myalloc(int x) {
 
         //condition check
         int res = init(size, &start);
-        if (res == 1) exit(0);
+        if (res == 1) return NULL;
     }
     
    
     //find block with space
+    if (first == NULL) {
+        Block *t = NULL;
+        Block *fresh = NULL;
+        moreSpace(aligned_size, 4096, &t, &fresh);
+        if (fresh == NULL) return NULL;
+    }
+
     Block * traverse = first;
     while (traverse->next != NULL) {
-        if (traverse->size < (aligned_size + sizeof(Block))) { //if size available is left then size we want
+        if (traverse->size < aligned_size) { //if size available is left then size we want
             traverse = traverse->next;
         } else {
             break; //when we find block with enough space
         }
     }
 
-    if (traverse->next == NULL && traverse->size < (aligned_size + sizeof(Block))) { // no available blocks work
+    if (traverse->next == NULL && traverse->size < aligned_size) { // no available blocks work
         Block * newMem = NULL;
         size_t size = 4096;
         moreSpace(aligned_size, size, &traverse, &newMem);
-        if (traverse == NULL) {
+        if (newMem == NULL) {
             return NULL; // out of memory
         }
     }
